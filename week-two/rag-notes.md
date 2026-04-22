@@ -5,6 +5,7 @@
 1. [**Why RAG is Needed**](#1-why-rag-is-needed)
 2. [**RAG Scenarios**](#2-rag-scenarios)
 3. [**Vanilla RAG**](#3-vanilla-rag)
+4. [**Reranker (Cross Encoder)**](#4-reranker-cross-encoder)
 
 ---
 
@@ -174,3 +175,53 @@ Vanilla RAG is a strong starting point but has known weaknesses. Retrieval quali
 ## What Comes After Vanilla RAG
 
 More advanced RAG systems improve on these limitations with techniques such as **query rewriting** and HyDE (Hypothetical Document Embeddings) to reformulate the query before retrieval; **re-ranking** to sort candidates more accurately using a second model; **hybrid search** to combine vector similarity with keyword methods like BM25; **multi-hop or agentic RAG** for iterative retrieval across reasoning steps; and **better chunking strategies** based on semantic boundaries or document structure.
+
+---
+
+# 4. Reranker (Cross Encoder)
+
+A **Reranker** is an advanced component in a RAG pipeline that runs **after** the initial retrieval step. Its job is to re-score the candidate chunks returned by the retriever and pick out the truly most relevant ones before they are sent to the LLM. The key property of a reranker is that it is **very slow but more accurate** than the initial retriever.
+
+## How a Cross Encoder Reranker Works
+
+A cross encoder reranker follows a simple flow:
+
+```
+[query] + [doc] → Model → Score
+```
+
+It takes the query and one document together as a combined input and feeds that combined input into a transformer model. The model outputs a single relevance score for that (query, document) pair. This process is repeated for every document in the candidate list returned by the retriever.
+
+## Why It Is More Accurate
+
+In vanilla retrieval, the query and the documents are embedded separately and compared only at the vector level. The model never sees them together, so it misses fine-grained relationships between the words in the query and the words in the document.
+
+A cross encoder looks at the query and the document at the same time, inside the same model pass. This allows it to capture deep word-level interactions — for example, noticing that *"refund"* in the query matches *"money back"* in the document, or understanding how the query's intent lines up with the document's content. This joint view is what makes it significantly more accurate than plain vector similarity.
+
+## Why It Is Slow
+
+Because the cross encoder must process the query and document together, the embeddings cannot be pre-computed. Each time a new query comes in, the model must run a fresh forward pass for every candidate document.
+
+If the retriever returns 100 candidate chunks, the cross encoder runs 100 separate model calls. This cost grows linearly with the number of candidates, which is why reranking is only applied to a small shortlist — not the entire knowledge base.
+
+## Where It Fits in the RAG Pipeline
+
+The reranker sits between the retriever and the LLM, refining the top results before generation:
+
+```
+Query
+  ↓
+Retriever (fast, approximate)   → Top 100 candidates
+  ↓
+Reranker (cross encoder, slow)  → Top 5 best
+  ↓
+LLM (Generation)
+  ↓
+Answer
+```
+
+The retriever casts a wide net quickly, and the reranker refines the top candidates with much higher precision. This two-stage pattern gives you both the speed of vector search and the accuracy of a cross encoder.
+
+## Summary in One Line
+
+A Cross Encoder reranker trades speed for accuracy by feeding the query and each candidate document into the model together, producing a much more reliable relevance score than plain vector search.
